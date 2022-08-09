@@ -3,6 +3,7 @@
   "type": "tools",
   "version": "1.0.0",
   "description": "zhipin工具集合",
+  "bin": [],
   "keywords": [
     "sunday",
     "tools"

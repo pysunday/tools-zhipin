@@ -12,10 +12,15 @@ from pydash import get
 class Zhipin():
     def __init__(self):
         self.zhipin = ZhipinLogin().login().rs
+        self.userInfo = None
+
+    def getUserInfo(self):
+        if self.userInfo: return self.userInfo
+        self.userInfo = self.zhipin.get(getUserInfo).json()['zpData']
+        return self.userInfo
 
     def getToken(self):
-        info = self.zhipin.get(getUserInfo).json()
-        token = get(info, 'zpData.token')
+        token = self.getUserInfo()['token']
         print('token: %s' % token)
         return token
 
@@ -34,7 +39,7 @@ class Zhipin():
 
     def run(self):
         self.getCookies()
-        self.getToken()
+        self.getUserInfo()
         self.getPassword()
 
 
