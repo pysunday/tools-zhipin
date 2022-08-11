@@ -1,13 +1,17 @@
 # coding: utf-8
 import paho.mqtt.client as mqtt
 import time
-import logging
 import random
 import json
 from sunday.tools.zhipin.zhipin import Zhipin
-from sunday.tools.zhipin.message import presence, chatProtocolDecode
+from sunday.tools.zhipin.message import chatProtocolDecode
+from sunday.tools.zhipin.handler import presenceHandler, textHandler
+from sunday.tools.imrobot import Xiaoi
+from sunday.core import Logger
 import certifi
 import socks
+
+testUid = ''
 
 def randomStr(num = 16, rangeNum = 16):
     """生成随机字符串，num为目标字符串长度，rangeNum为字符挑选范围"""
@@ -17,12 +21,9 @@ def randomStr(num = 16, rangeNum = 16):
         ans[i] = text[random.randint(0, rangeNum - 1)]
     return ''.join(ans)
 
-logging.basicConfig(level='DEBUG', format='%(asctime)s [%(name)s:%(lineno)d] [%(levelname)s]- %(message)s')
-
-
-
 class ZhipinClient():
     def __init__(self):
+        self.logger = Logger('ZHIPIN MQTT').getLogger()
         self.clientId = "ws-" + randomStr()
         self.server = 'ws.zhipin.com'
         self.port = 443
@@ -31,55 +32,83 @@ class ZhipinClient():
         self.userInfo = self.zhipin.getUserInfo()
         self.password = self.zhipin.getPassword()
         self.cookies = self.zhipin.getCookies()
+        self.robot = self.robotInit()
+        self.isParsedPresence = False
+
+    def robotInit(self):
+        # 初始化机器人
+        robot = Xiaoi()
+        robot.open()
+        robot.heartbeat()
+        return robot
 
     def on_connect(self, client, userdata, flags, rc):
-        print("Connected with result code " + str(rc))
+        self.logger.info("MQTT连接成功, 连接状态: %d" % rc)
         self.sendPresence(self.userInfo)
 
     def on_message(self, client, userdata, message):
-        print('message topic =', message.topic)
-        print('message qos =', message.qos)
-        print('message retain flag =', message.retain)
-        payload = chatProtocolDecode(message.payload)
-        type = payload.get('type')
-        msgs = payload.get('messages')
-        print('message type =', type, 'message count =', len(msgs))
+        self.logger.info('接收到消息, topic: %s, qos: %d, flag: %d' %
+                (message.topic, message.qos, message.retain))
+        try:
+            payload = chatProtocolDecode(message.payload)
+            type = payload.get('type')
+            msgs = payload.get('messages')
+            self.logger.info('消息解码成功')
+            self.logger.info('信息类型: %d' % type)
+            self.logger.debug(json.dumps(payload, indent=2))
+            if type == 1 and len(msgs) > 1:
+                # 所有未读数据只执行一次解析
+                if self.isParsedPresence:
+                    msgs = None
+                else:
+                    self.isParsedPresence = True
+            if msgs and len(msgs):
+                self.logger.info('数据条数: %d' % len(msgs))
+                for msg in msgs:
+                    self.parserMessage(msg)
+
+        except Exception as e:
+            self.logger.error('信息解码失败!')
+            self.logger.error(e)
+
+    def parserMessage(self, msg):
+        target = msg.get('to')
+        origin = msg.get('from')
+        body = msg.get('body')
+        msgType = msg.get('type')
+        bodyType = body.get('type')
+        if msgType == 3 and bodyType == 1:
+            # 为用户发送数据
+            if int(origin.get('uid')) == int(testUid):
+                text = body.get('text')
+                ans = self.robot.askText(text)
+                self.sendMessage(ans, origin, target)
+
+    def sendMessage(self, text, origin, target):
+        # 发送消息
+        boss = self.zhipin.getGeekFriend(origin.get('uid'))
+        if not boss: self.logger.error('uid置换encryptBossId失败')
+        (data, buff) = textHandler(text, target, { **origin, 'encryptUid': boss.get('encryptBossId') })
+        self.logger.warning('发送请求：%s' % str(data))
+        self.send('chat', buff, 1, True)
 
     def sendPresence(self, userInfo):
+        # 查询未读消息
         cookieA = self.zhipin.zhipin.getCookiesDict().get('__a')
         uniqid = ''
         if cookieA:
             [a, b, *_] = cookieA.split('.')
             uniqid = '.'.join([b, a])
-        params = {
-                'type': 1,
-                'lastMessageId': 0, # 默认为0，根据数据会有变动
-                'clientInfo': {
-                    'version': '',
-                    'system': '',
-                    'systemVersion': '',
-                    'model': '',
-                    'uniqid': uniqid,
-                    'network': userInfo.get('clientIP'),
-                    'appid': 9019,
-                    'platform': 'web',
-                    'channel': '-1',
-                    'ssid': '',
-                    'bssid': '',
-                    'longitude': 0,
-                    'latitude': 0
-                    }
-                }
-        payload = presence(params, userInfo.get('userId'))
-        self.send('chat', bytearray(payload.SerializeToString()), 1, True)
+        (data, buff) = presenceHandler(userInfo, uniqid)
+        self.logger.warning('发送请求：%s' % str(data))
+        self.send('chat', buff, 1, True)
 
     def send(self, *params):
-        print('发送请求：' + str(params))
         self.client.publish(*params)
 
     def init(self):
         client = mqtt.Client(client_id=self.clientId, transport='websockets')
-        client.enable_logger()
+        client.enable_logger(self.logger)
         client.on_connect = self.on_connect
         client.on_message = self.on_message
         client.username_pw_set(self.userInfo['token'] + '|0', self.password)
@@ -104,5 +133,7 @@ if __name__ == "__main__":
     zw = ZhipinClient()
     zw.init()
     zw.run()
+    time.sleep(3)
+    # zw.parserMessage()
     # zw.sendPresence(zw.userInfo)
 

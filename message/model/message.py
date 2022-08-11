@@ -6,7 +6,7 @@ def message(type, mid, _from, to, body):
     pb_message.type = type
     pb_message.mid = mid
     pb_message.cmid = mid
-    setattr(pb_message, 'from', _from)
-    pb_message.to = to
-    pb_message.body = body
+    getattr(pb_message, 'from').CopyFrom(_from)
+    pb_message.to.CopyFrom(to)
+    pb_message.body.CopyFrom(body)
     return pb_message

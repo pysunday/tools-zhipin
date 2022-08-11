@@ -191,6 +191,7 @@ message TechwolfMessage {
   optional string bizId = 17;
   optional int32 bizType = 18;
   optional string securityId = 19;
+  optional bool isSelf = 20;
 }
 message TechwolfClientInfo {
   optional string version = 1;
