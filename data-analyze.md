@@ -8,6 +8,13 @@
 }
 ```
 
+type | 关联字段 | 说明
+---- | -------- | ----
+6 | messageRead | 消息被查看
+1 | messages | 消息
+4 | iqResponse | -
+5 | messageSync | -
+
 # 初始化数据
 
 ```javascript
@@ -108,23 +115,19 @@ message = [{
 
 ## 字段说明
 
-### message.body.type: number
+### message.type与message.body.type
 
 作用：标记信息类型
-
-值 | 描述 | 是否用户发送 | headText | text | 其他
--- | ---- | ------------ | -------- | ---- | ----
-8 |  | - | Boss[xxx]希望就如下职位与您沟通 | - | jobDesc字段值为JD描述
-4 | 未知 | - | - | - | -
-1 | 聊天信息 | 是 | - | 用户发送的信息 | 与message.pushText值一致
-17 | 举报提示 | - | - | 该BOSS招聘过程中若向你收费，请举报。| -
-16 | 跳转入口 | - | - | - | articles存在值，跳外链, 如：竞争力分析
 
 message.type | message.body.type | 关联字段 | 说明
 ------------ | ----------------- | -------- | ----
 4 | 16 | message.body.articles | 个人竞争力分析
-3 | 1 | message.body.text | 用户发送信息
+3 | 1 | message.body.text | 用户发送信息(历史)
+1 | 1 | message.body.text | 用户发送信息(实时)
 3 | 4 | message.body.action | -
 3 | 8 | message.body.jobDesc | 系统打招呼
 3 | 25 | message.body.starRate | 系统让vip评分
+1 | 7 | message.body.dialog | 是否发简历
+1 | 4 | message.body.action.aid == 32 | 交换微信
+3 | 4 | message.body.action.aid == 51 | -
 

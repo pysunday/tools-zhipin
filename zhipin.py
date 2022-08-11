@@ -1,4 +1,4 @@
-# coding: utf-8
+#coding: utf-8
 import os
 import sys
 import re
@@ -19,6 +19,7 @@ class Zhipin():
     def getUserInfo(self):
         if self.userInfo: return self.userInfo
         self.userInfo = self.zhipin.get(getUserInfo).json()['zpData']
+        self.logger.debug('userInfo: %s' % self.userInfo)
         return self.userInfo
 
     def getToken(self):
@@ -52,6 +53,12 @@ class Zhipin():
         self.logger.debug('getGeekFriend: %d => %s' % (int(uid), friend))
         return friend
 
+    def bossdata(self, uid, source=0):
+        res = self.zhipin.get(config.bossdataUrl % (int(uid), source)).json()
+        ans = (get(res, 'zpData.data'), get(res, 'zpData.job'))
+        self.logger.debug('bossdata: %d => %s' % (int(uid), ans))
+        return ans
+
     def run(self):
         self.getCookies()
         self.getUserInfo()
@@ -60,4 +67,7 @@ class Zhipin():
 
 if __name__ == "__main__":
     zhipin = Zhipin()
-    zhipin.getGeekFriend(20525166)
+    # zhipin.getGeekFriend(20525166)
+    # zhipin.getUserInfo()
+    # zhipin.getGeekFriendList()
+    zhipin.bossdata(20525166)

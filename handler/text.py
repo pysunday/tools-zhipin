@@ -6,7 +6,6 @@ from sunday.tools.zhipin.message import text as msg_text
 def textHandler(text, source, target):
     sourceCopy = pick(source, ['uid', 'encryptUid', 'source'])
     targetCopy = pick(target, ['uid', 'encryptUid', 'source'])
-    __import__('ipdb').set_trace()
     message = {
         "tempID": 1660167577200,
         "isSelf": True,

@@ -1,0 +1,9 @@
+*.swp
+*.pyc
+*.env
+*.cookies
+*.store
+*.DS_Store
+__pycache__
+.pytest_cache
+message.json
