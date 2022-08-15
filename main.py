@@ -8,7 +8,7 @@ import socks
 import os
 from sunday.tools.zhipin.zhipin import Zhipin
 from sunday.tools.zhipin.message import chatProtocolDecode
-from sunday.tools.zhipin.handler import presenceHandler, textHandler
+from sunday.tools.zhipin.handler import presenceHandler, textHandler, iqHandler, readHandler
 from sunday.tools.imrobot import Xiaoi
 from sunday.core import Logger
 from pydash import get
@@ -53,6 +53,8 @@ class ZhipinClient():
         self.client = None
         # 消息缓存，用于回放验证
         self.cacheLogFile = './message.cache.log'
+        # 当前正在聊天的boss
+        self.currentChatBossId = None
 
     def isSelf(self, uid):
         return int(self.userInfo.get('userId')) == int(uid)
@@ -70,6 +72,8 @@ class ZhipinClient():
             self.sendPresence(self.userInfo)
             # time.sleep(1)
             self.autoParseMessage()
+        (data, buff) = textHandler('haha', {'uid': 555547565}, {'uid': 27904943, 'encryptUid': 'bfb5c693853bd21d1XNz29m0FFE~' })
+        self.send('chat', buff, 1, True)
 
     def on_message(self, client, userdata, message):
         self.logger.info('接收到消息, topic: %s, qos: %d, flag: %d' %
@@ -162,6 +166,7 @@ class ZhipinClient():
         ans = ''
         if type in ['1-1', '3-1']:
             # 为用户发送数据
+            text = body.get('text').strip()
             if self.selfMessageObj.get(text):
                 while self.selfMessageObj.get(text):
                     text = self.selfMessageObj.get(text)
@@ -181,8 +186,25 @@ class ZhipinClient():
         elif type == '1-20':
             ans = '机器人暂时只看得懂文字哦'
         if ans:
+            self.sendMessageRead(msg)
+            self.sendMessageIq(msg)
             self.logger.debug('自动回复消息: %s' % ans)
             self.sendMessage(ans, target, origin)
+
+    def sendMessageRead(self, msg):
+        # 消息已读
+        (data, buff) = readHandler(msg.get('mid'), get(msg, 'from.uid'))
+        self.logger.warning('发送消息::sendMessageRead\n%s' % str(data))
+        self.send('chat', buff, 1, True)
+
+    def sendMessageIq(self, msg):
+        # 开启新会话
+        currentChatBossId = int(get(msg, 'from.uid') or 0)
+        if currentChatBossId and self.currentChatBossId != currentChatBossId:
+            self.currentChatBossId = currentChatBossId
+            (data, buff) = iqHandler(msg, self.userInfo.get('userId'))
+            self.logger.warning('发送消息::sendMessageIq\n%s' % str(data))
+            self.send('chat', buff, 1, True)
 
     def autoParseMessage(self):
         # 主动发消息
@@ -197,9 +219,11 @@ class ZhipinClient():
     def sendMessage(self, text, origin, target):
         # 发送消息
         (boss, *_) = self.zhipin.bossdata(target.get('uid'))
-        if not boss: self.logger.error('uid置换encryptBossId失败')
+        if not boss:
+            self.logger.error('uid置换encryptBossId失败')
+            return
         (data, buff) = textHandler(text, origin, { **target, 'encryptUid': boss.get('encryptBossId') })
-        self.logger.warning('发送请求：%s' % str(data))
+        self.logger.warning('发送消息::sendMessage\n%s' % str(data))
         self.send('chat', buff, 1, True)
         # time.sleep(0.5)
 
@@ -211,7 +235,7 @@ class ZhipinClient():
             [a, b, *_] = cookieA.split('.')
             uniqid = '.'.join([b, a])
         (data, buff) = presenceHandler(userInfo, uniqid)
-        self.logger.warning('发送请求：%s' % str(data))
+        self.logger.warning('发送消息::sendPresence\n%s' % str(data))
         self.send('chat', buff, 1, True)
 
     def send(self, *params):
@@ -255,8 +279,9 @@ class ZhipinClient():
 if __name__ == "__main__":
     # readMessageJson()
     zw = ZhipinClient()
-    zw.init()
+    # zw.init()
     zw.run()
+
     # time.sleep(3)
     # zw.parserMessage()
     # zw.sendPresence(zw.userInfo)

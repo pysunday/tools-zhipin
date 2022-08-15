@@ -6,3 +6,4 @@ from .message import *
 from .messageSync import *
 from .presence import *
 from .user import *
+from .iq import *
