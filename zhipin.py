@@ -3,18 +3,24 @@ import os
 import sys
 import re
 import argparse
+from pprint import pprint
 from sunday.tools.zhipin import config
 from sunday.login.zhipin import Zhipin as ZhipinLogin
 from sunday.login.zhipin.config import getUserInfo
-from sunday.core import Logger, printTable, clear, getParser
+from sunday.tools.zhipin.params import ZHIPIN_CMDINFO
+from sunday.core import Logger, getParser
 from pydash import get, find
 
 class Zhipin():
-    def __init__(self):
+    def __init__(self, isInit=True):
         self.logger = Logger('ZHIPIN HANDLER').getLogger()
-        self.zhipin = ZhipinLogin().login().rs
         self.userInfo = None
         self.geekFriendList = None
+        self.bossInfo = {}
+        if isInit: self.init()
+
+    def init(self):
+        self.zhipin = ZhipinLogin().login().rs
 
     def getUserInfo(self):
         if self.userInfo: return self.userInfo
@@ -59,15 +65,75 @@ class Zhipin():
         self.logger.debug('bossdata: %d => %s' % (int(uid), ans))
         return ans
 
+    def historyMsg(self, bossId, count=20, page=1, mid=None):
+        # 获取聊天记录
+        res = self.zhipin.get(config.historyMsgUrl % (bossId, count, page)).json()
+        ans = get(res, 'zpData.messages')
+        if mid and type(ans) == list:
+            ans = find(ans, lambda m: m.get('mid') == mid)
+        self.logger.debug('historyMsg: %s => %s' % (bossId, ans))
+        return ans
+
+    def getHistoryMsg(self, uid, count=20, page=1, mid=None):
+        boss = self.getBossInfo(uid)
+        if not boss: return {} if mid else []
+        ans = self.historyMsg(boss.get('encryptBossId'), count, page, mid=mid)
+        return ans
+
+    def getBossInfo(self, uid):
+        # 获取boss信息
+        if uid in self.bossInfo: return self.bossInfo[uid]
+        bossInfo = self.bossdata(uid)[0]
+        if bossInfo:
+            self.bossInfo[bossInfo.get(uid)] = bossInfo
+        return bossInfo
+
+
+class ZhipinSelf(Zhipin):
+    def __init__(self):
+        Zhipin.__init__(self, False)
+
+    def bossHandler(self):
+        # boss子命令
+        if len(self.bossId):
+            boss = self.getBossInfo(self.bossId[0])
+            pprint(boss)
+
+    def userHandler(self):
+        # user子命令
+        user = self.getUserInfo()
+        pprint(user)
+
+    def friendHandler(self):
+        # 历史聊天用户信息
+        if self.friendId:
+            pprint(self.getGeekFriend(self.friendId))
+        else:
+            pprint(self.getGeekFriendList())
+
+    def historyHandler(self):
+        # history子命令
+        if len(self.bossId):
+            history = self.getHistoryMsg(self.bossId[0], mid=self.messageId)
+            pprint(history)
+
     def run(self):
-        self.getCookies()
-        self.getUserInfo()
-        self.getPassword()
+        self.init()
+        if self.subName == 'boss':
+            self.bossHandler()
+        elif self.subName == 'user':
+            self.userHandler()
+        elif self.subName == 'friend':
+            self.friendHandler()
+        elif self.subName == 'history':
+            self.historyHandler()
+
+
+def runcmd():
+    (parser, subparsersObj) = getParser(**ZHIPIN_CMDINFO)
+    handle = parser.parse_args(namespace=ZhipinSelf())
+    handle.run()
 
 
 if __name__ == "__main__":
-    zhipin = Zhipin()
-    # zhipin.getGeekFriend(20525166)
-    # zhipin.getUserInfo()
-    # zhipin.getGeekFriendList()
-    zhipin.bossdata(20525166)
+    runcmd()

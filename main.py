@@ -6,12 +6,12 @@ import json
 import certifi
 import socks
 import os
-import logging
 from sunday.tools.zhipin.zhipin import Zhipin
 from sunday.tools.zhipin.message import chatProtocolDecode
 from sunday.tools.zhipin.handler import presenceHandler, textHandler
 from sunday.tools.imrobot import Xiaoi
 from sunday.core import Logger
+from pydash import get
 
 messageAutoUid = []
 
@@ -33,6 +33,7 @@ def readMessageJson():
     except Exception as e:
         return None
 
+
 class ZhipinClient():
     def __init__(self):
         self.logger = Logger('ZHIPIN MQTT').getLogger()
@@ -49,6 +50,9 @@ class ZhipinClient():
         self.isParsedPresence = True
         self.selfMessageObj = readMessageJson() or {}
         self.isSendTip = []
+        self.client = None
+        # 消息缓存，用于回放验证
+        self.cacheLogFile = './message.cache.log'
 
     def isSelf(self, uid):
         return int(self.userInfo.get('userId')) == int(uid)
@@ -72,16 +76,60 @@ class ZhipinClient():
                 (message.topic, message.qos, message.retain))
         try:
             payload = chatProtocolDecode(message.payload)
-            type = payload.get('type')
-            msgs = payload.get('messages')
-            self.logger.info('消息解码成功')
-            self.logger.info('消息类型: %d' % type)
-            self.logger.debug(json.dumps(payload, ensure_ascii=False))
-            if type == 1:
-                self.message_parser_type1(payload)
+            self.message_parser(payload)
         except Exception as e:
             self.logger.error('消息解码失败!')
             self.logger.exception(e)
+
+    def writeMqttMessage(self, msg):
+        if self.client or True:
+            with open(self.cacheLogFile, 'a') as f:
+                f.write(msg + '\n')
+
+    def message_parser(self, payload):
+        # 解析payload
+        type = payload.get('type')
+        msgs = payload.get('messages')
+        self.logger.info('消息解码成功')
+        self.logger.info('消息类型: %d' % type)
+        msg = json.dumps(payload, ensure_ascii=False)
+        self.writeMqttMessage(msg)
+        self.logger.debug(msg)
+        if type in [1, 3]:
+            self.message_parser_type1(payload)
+        elif type in [6]:
+            self.message_parser_type6(payload)
+        elif type in [4]:
+            self.message_parser_type4(payload)
+
+    def message_parser_type4(self, payload):
+        # 消息已回复
+        resList = get(payload, 'iqResponse.results') or []
+        resObj = {}
+        for res in resList:
+            resObj[res.get('key')] = res.get('value')
+        uid = resObj.get('friendId')
+        mid = resObj.get('msg_id')
+        if self.isSelf(uid) or not uid or not mid: return
+        message = self.zhipin.getHistoryMsg(uid, mid=mid)
+        if message:
+            self.logger.info('消息已回复(%s): %s' % (get(message, 'to.name'), message.get('pushText')))
+
+    def message_parser_type6(self, payload):
+        # 消息已读
+        uid = get(payload, 'messageRead.0.userId')
+        mid = get(payload, 'messageRead.0.messageId')
+        if uid: uid = int(uid)
+        if mid: mid = int(mid)
+        if self.isSelf(uid):
+            self.logger.info('自己查看了信息')
+        elif mid:
+            message = self.zhipin.getHistoryMsg(uid, mid=mid)
+            if message:
+                self.logger.info('消息已查看(%s): %s' % (get(message, 'to.name'), message.get('pushText')))
+        else:
+            bossInfo = self.zhipin.getBossInfo(uid)
+            self.logger.info('%s(%s)查看了信息' %s (bossInfo.get(name), bossInfo.get(companyName)))
 
     def message_parser_type1(self, payload):
         # 消息数据解析
@@ -106,28 +154,34 @@ class ZhipinClient():
         body = msg.get('body')
         msgType = msg.get('type')
         bodyType = body.get('type')
-        self.logger.debug('parserMessage开始执行 msgType: %d, bodyType: %d' % (msgType, bodyType))
+        self.logger.warning('parserMessage开始执行 msgType: %d, bodyType: %d' % (msgType, bodyType))
         if self.isSelf(origin.get('uid')):
-            self.log.warning('消息为自己发送，跳出')
+            self.logger.warning('消息为自己发送，跳出')
             return
         type = '%d-%d' % (msgType, bodyType)
-        if type in ['1-1', '3-1', '3-8']:
-            self.logger.debug('自动回复消息')
+        ans = ''
+        if type in ['1-1', '3-1']:
             # 为用户发送数据
-            bossUid = int(origin.get('uid'))
-            text = body.get('text').strip()
-            ans = ''
-            if type == '3-8' or bossUid not in self.isSendTip:
-                # 打招呼或者首次
-                ans = self.selfMessageObj['tip']
-                self.isSendTip.append(bossUid)
-            elif self.selfMessageObj.get(text):
+            if self.selfMessageObj.get(text):
                 while self.selfMessageObj.get(text):
                     text = self.selfMessageObj.get(text)
                 ans = text
             else:
                 ans = self.robot.askText(text)
-            self.logger.debug('发送消息: %s' % ans)
+                if ans in ['', 'defaultReply']:
+                    ans = '机器人没有看懂你在说什么'
+        elif type == '3-8':
+            # 系统打招呼
+            bossUid = int(origin.get('uid'))
+            if bossUid not in self.isSendTip:
+                ans = self.selfMessageObj['tip']
+                self.isSendTip.append(bossUid)
+        elif type == '1-7':
+            ans = '这得主人自己决策，稍等哈'
+        elif type == '1-20':
+            ans = '机器人暂时只看得懂文字哦'
+        if ans:
+            self.logger.debug('自动回复消息: %s' % ans)
             self.sendMessage(ans, target, origin)
 
     def autoParseMessage(self):
@@ -142,7 +196,7 @@ class ZhipinClient():
 
     def sendMessage(self, text, origin, target):
         # 发送消息
-        (boss,) = self.zhipin.bossdata(target.get('uid'))
+        (boss, *_) = self.zhipin.bossdata(target.get('uid'))
         if not boss: self.logger.error('uid置换encryptBossId失败')
         (data, buff) = textHandler(text, origin, { **target, 'encryptUid': boss.get('encryptBossId') })
         self.logger.warning('发送请求：%s' % str(data))
@@ -161,9 +215,10 @@ class ZhipinClient():
         self.send('chat', buff, 1, True)
 
     def send(self, *params):
-        self.client.publish(*params)
+        if self.client: self.client.publish(*params)
 
     def init(self):
+        # 初始化聊天服务
         client = mqtt.Client(client_id=self.clientId, transport='websockets')
         client.enable_logger(self.logger)
         client.on_connect = self.on_connect
@@ -176,7 +231,18 @@ class ZhipinClient():
         client.connect(self.server, self.port, 60)
         self.client = client
 
+    def runByCache(self):
+        with open(self.cacheLogFile, 'r') as f:
+            for msg in f.readlines():
+                if not msg: continue
+                payload = json.loads(msg)
+                self.message_parser(payload)
+
     def run(self):
+        if not self.client:
+            if os.path.exists(self.cacheLogFile):
+                self.runByCache()
+            return
         try:
             self.client.loop_forever()
             # self.client.loop_start()

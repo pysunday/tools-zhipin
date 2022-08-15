@@ -130,4 +130,6 @@ message.type | message.body.type | 关联字段 | 说明
 1 | 7 | message.body.dialog | 是否发简历
 1 | 4 | message.body.action.aid == 32 | 交换微信
 3 | 4 | message.body.action.aid == 51 | -
+1 | 20 | message.body.sticker.image | 表情
+4 | 7 | message.body.dialog | 设置boss优先提醒
 
