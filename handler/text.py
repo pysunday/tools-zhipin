@@ -3,11 +3,11 @@ import time
 from pydash import pick
 from sunday.tools.zhipin.message import text as msg_text
 
-def textHandler(text, source, target):
+def textHandler(text, source, target, userInfo):
     sourceCopy = pick(source, ['uid', 'encryptUid', 'source'])
     targetCopy = pick(target, ['uid', 'encryptUid', 'source'])
     message = {
-        "tempID": 1660167577200,
+        "tempID": userInfo.get('userId') + int(time.time() * 1000),
         "isSelf": True,
         "body": {
             "type": 1,

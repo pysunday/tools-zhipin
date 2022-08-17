@@ -122,6 +122,7 @@ message = [{
 message.type | message.body.type | 关联字段 | 说明
 ------------ | ----------------- | -------- | ----
 4 | 16 | message.body.articles | 个人竞争力分析
+4 | 17 | message.body.templateId == 3 | 该BOSS招聘过程中若向你收费，请举报。
 3 | 1 | message.body.text | 用户发送信息(历史)
 1 | 1 | message.body.text | 用户发送信息(实时)
 3 | 4 | message.body.action | -
@@ -132,4 +133,5 @@ message.type | message.body.type | 关联字段 | 说明
 3 | 4 | message.body.action.aid == 51 | -
 1 | 20 | message.body.sticker.image | 表情
 4 | 7 | message.body.dialog | 设置boss优先提醒
+3 | 15 | message.body.articles | 系统通知
 

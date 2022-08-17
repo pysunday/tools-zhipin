@@ -55,6 +55,8 @@ class ZhipinClient():
         self.cacheLogFile = './message.cache.log'
         # 当前正在聊天的boss
         self.currentChatBossId = None
+        # 记录开启智能聊天的boss对象
+        self.openChatBossStore = {}
 
     def isSelf(self, uid):
         return int(self.userInfo.get('userId')) == int(uid)
@@ -72,7 +74,7 @@ class ZhipinClient():
             self.sendPresence(self.userInfo)
             # time.sleep(1)
             self.autoParseMessage()
-        (data, buff) = textHandler('haha', {'uid': 555547565}, {'uid': 27904943, 'encryptUid': 'bfb5c693853bd21d1XNz29m0FFE~' })
+        (data, buff) = textHandler('haha', {'uid': 555547565}, {'uid': 27904943, 'encryptUid': 'bfb5c693853bd21d1XNz29m0FFE~' }, self.userInfo)
         self.send('chat', buff, 1, True)
 
     def on_message(self, client, userdata, message):
@@ -164,14 +166,16 @@ class ZhipinClient():
             return
         type = '%d-%d' % (msgType, bodyType)
         ans = ''
+        bossId = origin.get('uid')
+        bossName = origin.get('name')
         if type in ['1-1', '3-1']:
             # 为用户发送数据
             text = body.get('text').strip()
-            if self.selfMessageObj.get(text):
-                while self.selfMessageObj.get(text):
+            if self.selfMessageObj.get(text) or text in ['openChat']:
+                while self.selfMessageObj.get(text) is not None:
                     text = self.selfMessageObj.get(text)
                 ans = text
-            else:
+            elif self.openChatBossStore.get(bossId):
                 ans = self.robot.askText(text)
                 if ans in ['', 'defaultReply']:
                     ans = '机器人没有看懂你在说什么'
@@ -185,7 +189,11 @@ class ZhipinClient():
             ans = '这得主人自己决策，稍等哈'
         elif type == '1-20':
             ans = '机器人暂时只看得懂文字哦'
-        if ans:
+        if ans == 'openChat':
+            # 开启智能聊天
+            self.openChatBossStore[bossId] = not self.openChatBossStore.get(bossId)
+            self.warning('%s: %s智能聊天' % (bossName, '开启' if self.openChatBossStore[bossId] else '关闭'))
+        elif ans:
             self.sendMessageRead(msg)
             self.sendMessageIq(msg)
             self.logger.debug('自动回复消息: %s' % ans)
@@ -222,7 +230,7 @@ class ZhipinClient():
         if not boss:
             self.logger.error('uid置换encryptBossId失败')
             return
-        (data, buff) = textHandler(text, origin, { **target, 'encryptUid': boss.get('encryptBossId') })
+        (data, buff) = textHandler(text, origin, { **target, 'encryptUid': boss.get('encryptBossId') }, self.userInfo)
         self.logger.warning('发送消息::sendMessage\n%s' % str(data))
         self.send('chat', buff, 1, True)
         # time.sleep(0.5)
@@ -269,7 +277,6 @@ class ZhipinClient():
             return
         try:
             self.client.loop_forever()
-            # self.client.loop_start()
         except Exception as e:
             print('Error looping')
             print(e)
@@ -277,12 +284,7 @@ class ZhipinClient():
             self.client.disconnect()
 
 if __name__ == "__main__":
-    # readMessageJson()
     zw = ZhipinClient()
-    # zw.init()
+    zw.init()
     zw.run()
-
-    # time.sleep(3)
-    # zw.parserMessage()
-    # zw.sendPresence(zw.userInfo)
 
