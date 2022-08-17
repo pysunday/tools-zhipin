@@ -9,8 +9,9 @@ import os
 from sunday.tools.zhipin.zhipin import Zhipin
 from sunday.tools.zhipin.message import chatProtocolDecode
 from sunday.tools.zhipin.handler import presenceHandler, textHandler, iqHandler, readHandler
+from sunday.tools.zhipin.params import ZHIPIN_CHAT_CMDINFO
 from sunday.tools.imrobot import Xiaoi
-from sunday.core import Logger
+from sunday.core import Logger, getParser
 from pydash import get
 
 messageAutoUid = []
@@ -23,17 +24,6 @@ def randomStr(num = 16, rangeNum = 16):
         ans[i] = text[random.randint(0, rangeNum - 1)]
     return ''.join(ans)
 
-def readMessageJson():
-    messagePath = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'message.json')
-    if not os.path.exists(messagePath): return None
-    try:
-        with open(messagePath, 'r') as f:
-            content = f.read()
-            return json.loads(content)
-    except Exception as e:
-        return None
-
-
 class ZhipinClient():
     def __init__(self):
         self.logger = Logger('ZHIPIN MQTT').getLogger()
@@ -41,18 +31,24 @@ class ZhipinClient():
         self.server = 'ws.zhipin.com'
         self.port = 443
         self.path = '/chatws'
-        self.zhipin = Zhipin()
-        self.userInfo = self.zhipin.getUserInfo()
-        self.password = self.zhipin.getPassword()
-        self.cookies = self.zhipin.getCookies()
-        self.robot = self.robotInit()
+        # 聊天机器人
+        self.robot = None
+        # zhipin登录交互
+        self.zhipin = None
+        # 当前登录用户
+        self.userInfo = None
+        # 当前mutt密码
+        self.password = None
+        # 当前登录的cookie
+        self.cookies = None
         # 控制未读消息是否回复，保证只统一回复一次, True表示不回复或已经回复过一次
         self.isParsedPresence = True
-        self.selfMessageObj = readMessageJson() or {}
+        # 回复模版对象
+        self.selfMessageObj = {}
+        # 首次需要发送tip信息，标记已经发送后不再发送
         self.isSendTip = []
+        # 即时通讯客户端
         self.client = None
-        # 消息缓存，用于回放验证
-        self.cacheLogFile = './message.cache.log'
         # 当前正在聊天的boss
         self.currentChatBossId = None
         # 记录开启智能聊天的boss对象
@@ -60,13 +56,6 @@ class ZhipinClient():
 
     def isSelf(self, uid):
         return int(self.userInfo.get('userId')) == int(uid)
-
-    def robotInit(self):
-        # 初始化机器人
-        robot = Xiaoi()
-        robot.open()
-        robot.heartbeat()
-        return robot
 
     def on_connect(self, client, userdata, flags, rc):
         self.logger.info("MQTT连接成功, 连接状态: %d" % rc)
@@ -88,9 +77,9 @@ class ZhipinClient():
             self.logger.exception(e)
 
     def writeMqttMessage(self, msg):
-        if self.client or True:
-            with open(self.cacheLogFile, 'a') as f:
-                f.write(msg + '\n')
+        # 写入消息
+        if self.msgCacheFileOut:
+            self.msgCacheFileOut.write(msg + '\n')
 
     def message_parser(self, payload):
         # 解析payload
@@ -168,6 +157,7 @@ class ZhipinClient():
         ans = ''
         bossId = origin.get('uid')
         bossName = origin.get('name')
+        canChat = self.openChatBossStore.get(bossId)
         if type in ['1-1', '3-1']:
             # 为用户发送数据
             text = body.get('text').strip()
@@ -175,7 +165,7 @@ class ZhipinClient():
                 while self.selfMessageObj.get(text) is not None:
                     text = self.selfMessageObj.get(text)
                 ans = text
-            elif self.openChatBossStore.get(bossId):
+            elif canChat and self.robot:
                 ans = self.robot.askText(text)
                 if ans in ['', 'defaultReply']:
                     ans = '机器人没有看懂你在说什么'
@@ -185,15 +175,17 @@ class ZhipinClient():
             if bossUid not in self.isSendTip:
                 ans = self.selfMessageObj['tip']
                 self.isSendTip.append(bossUid)
-        elif type == '1-7':
+        elif type == '1-7' and canChat:
             ans = '这得主人自己决策，稍等哈'
-        elif type == '1-20':
+        elif type == '1-20' and canChat:
             ans = '机器人暂时只看得懂文字哦'
         if ans == 'openChat':
             # 开启智能聊天
             self.openChatBossStore[bossId] = not self.openChatBossStore.get(bossId)
-            self.warning('%s: %s智能聊天' % (bossName, '开启' if self.openChatBossStore[bossId] else '关闭'))
-        elif ans:
+            isOpen = self.openChatBossStore[bossId]
+            self.logger.warning('%s: %s智能聊天' % (bossName, '开启' if isOpen else '关闭'))
+            ans = '已开启智能聊天，智能聊天服务由小i机器人提供' if isOpen else '已关闭智能聊天'
+        if ans:
             self.sendMessageRead(msg)
             self.sendMessageIq(msg)
             self.logger.debug('自动回复消息: %s' % ans)
@@ -250,6 +242,35 @@ class ZhipinClient():
         if self.client: self.client.publish(*params)
 
     def init(self):
+        self.zhipinInit()
+        # 初始化智能聊天机器人
+        if self.isRobot: self.robotInit()
+        # 初始化聊天服务
+        if not self.isPlayback: self.muttInit()
+        __import__('ipdb').set_trace()
+        if self.msgConfigFile:
+            # 解析回复模版
+            try:
+                selfMessageStr = self.msgConfigFile.read()
+                self.selfMessageObj = json.loads(selfMessageStr)
+            except Exception as e:
+                self.logger.error('消息回复模版解析失败，请检查文件%s内容是否为JSON格式'
+                        % self.msgConfigFile.name)
+
+    def zhipinInit(self):
+        self.zhipin = Zhipin()
+        self.userInfo = self.zhipin.getUserInfo()
+        self.password = self.zhipin.getPassword()
+        self.cookies = self.zhipin.getCookies()
+
+    def robotInit(self):
+        # 初始化机器人
+        robot = Xiaoi()
+        robot.open()
+        robot.heartbeat()
+        self.robot = robot
+
+    def muttInit(self):
         # 初始化聊天服务
         client = mqtt.Client(client_id=self.clientId, transport='websockets')
         client.enable_logger(self.logger)
@@ -264,27 +285,36 @@ class ZhipinClient():
         self.client = client
 
     def runByCache(self):
-        with open(self.cacheLogFile, 'r') as f:
-            for msg in f.readlines():
-                if not msg: continue
-                payload = json.loads(msg)
-                self.message_parser(payload)
+        if not self.msgCacheFileIn:
+            self.logger.error('回放模式需要显式调用参数--message-in')
+            return
+        for msg in self.msgCacheFileIn.readlines():
+            if not msg: continue
+            payload = json.loads(msg)
+            self.message_parser(payload)
 
     def run(self):
-        if not self.client:
-            if os.path.exists(self.cacheLogFile):
-                self.runByCache()
-            return
+        self.init()
         try:
-            self.client.loop_forever()
+            if self.client:
+                self.client.loop_forever()
+            else:
+                self.runByCache()
         except Exception as e:
             print('Error looping')
             print(e)
         finally:
-            self.client.disconnect()
+            self.client and self.client.disconnect()
+            self.msgCacheFileIn and self.msgCacheFileIn.close()
+            self.msgCacheFileOut and self.msgCacheFileOut.close()
+            self.logger.warning('如果程序未退出可能是robot还在心跳，可按键Ctrl + c终止程序执行')
+
+
+def runcmd():
+    parser = getParser(**ZHIPIN_CHAT_CMDINFO)
+    handle = parser.parse_args(namespace=ZhipinClient())
+    handle.run()
 
 if __name__ == "__main__":
-    zw = ZhipinClient()
-    zw.init()
-    zw.run()
+    runcmd()
 

@@ -33,4 +33,23 @@ Optional:
 
 ## zhipin_chat命令使用
 
-待完善
+```bash
+usage: zhipin_chat [-v] [-h] [--config FILE] [--message-in [FILE]] [--message-out [FILE]] [--robot] [--playback]
+
+zhipin聊天工具
+
+Optional:
+  -v, --version         当前程序版本
+  -h, --help            打印帮助说明
+  --config FILE         消息映射的json文件
+  --message-in [FILE]   读取消息文件用于回放使用，在--playback下生效，默认为执行目录下的message.cache.log文件
+  --message-out [FILE]  消息保存文件，用于之后回放使用，默认为执行目录下的message.cache.log文件
+  --robot               是否使用机器人回复消息
+  --playback            是否使用本地消息回放
+
+使用案例:
+    zhipin_chat --robot --config
+    zhipin_chat --robot --config /path/to/name.json --message-out /path/to/message.log
+    zhipin_chat --robot --config /path/to/name.json --playback --messsage-in /path/to/message.log
+```
+

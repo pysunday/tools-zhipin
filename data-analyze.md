@@ -1,3 +1,7 @@
+# 开启日志打印
+
+链接加上`&debug=true`
+
 # 数据结构
 
 ```javascript
