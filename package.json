@@ -5,8 +5,8 @@
   "description": "zhipin工具集合",
   "bin": ["zhipin", "zhipin_chat"],
   "depend": [
-    "pysunday/login-zhipin",
-    "pysunday/tools-imrobot"
+    "pysunday/login-zhipin#main",
+    "pysunday/tools-imrobot#main"
   ],
   "keywords": [
     "sunday",

@@ -247,11 +247,10 @@ class ZhipinClient():
         if self.isRobot: self.robotInit()
         # 初始化聊天服务
         if not self.isPlayback: self.muttInit()
-        __import__('ipdb').set_trace()
         if self.msgConfigFile:
             # 解析回复模版
             try:
-                selfMessageStr = self.msgConfigFile.read()
+                selfMessageStr = self.msgConfigFile[0].read()
                 self.selfMessageObj = json.loads(selfMessageStr)
             except Exception as e:
                 self.logger.error('消息回复模版解析失败，请检查文件%s内容是否为JSON格式'
