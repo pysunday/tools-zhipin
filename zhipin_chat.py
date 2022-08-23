@@ -184,7 +184,7 @@ class ZhipinClient():
             self.openChatBossStore[bossId] = not self.openChatBossStore.get(bossId)
             isOpen = self.openChatBossStore[bossId]
             self.logger.warning('%s: %s智能聊天' % (bossName, '开启' if isOpen else '关闭'))
-            ans = '已开启智能聊天，智能聊天服务由小i机器人提供' if isOpen else '已关闭智能聊天'
+            ans = '已开启智能聊天，智能聊天服务由小i机器人提供，可回复讲笑话、上海天气开启智慧生活' if isOpen else '已关闭智能聊天'
         if ans:
             self.sendMessageRead(msg)
             self.sendMessageIq(msg)
