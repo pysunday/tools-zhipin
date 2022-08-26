@@ -10,8 +10,8 @@ from sunday.tools.zhipin.zhipin import Zhipin
 from sunday.tools.zhipin.message import chatProtocolDecode
 from sunday.tools.zhipin.handler import presenceHandler, textHandler, iqHandler, readHandler
 from sunday.tools.zhipin.params import ZHIPIN_CHAT_CMDINFO
-from sunday.tools.imrobot import Xiaoi
-from sunday.core import Logger, getParser
+from sunday.tools.imrobot import Xiaoi, Moli, Qingyunke
+from sunday.core import Logger, getParser, enver
 from pydash import get
 
 messageAutoUid = []
@@ -24,6 +24,15 @@ def randomStr(num = 16, rangeNum = 16):
         ans[i] = text[random.randint(0, rangeNum - 1)]
     return ''.join(ans)
 
+defaultTip = {
+        'openRobot': '已开启智能聊天，可回复100关闭智能聊天。\n智能聊天服务由小i、茉莉、青云客提供，如回复讲笑话、上海天气等开启智慧生活。',
+        'closeRobot': '已关闭智能聊天，可回复100再次开启',
+        'robotNotReturn': '机器人没有看懂你在说什么',
+        'applicationResume': '这得主人自己决策，稍等哈',
+        'notText': '机器人暂时只看得懂文字哦',
+        'firstTip': '尊敬的Boss%s您好，您可回复对应数字获取您想要的信息，或者和智能机器人闲聊!\n\n%s'
+        }
+
 class ZhipinClient():
     def __init__(self):
         self.logger = Logger('ZHIPIN MQTT').getLogger()
@@ -33,6 +42,9 @@ class ZhipinClient():
         self.path = '/chatws'
         # 聊天机器人
         self.robot = None
+        self.xiaoi = None
+        self.moli = None
+        self.qingyunke = None
         # zhipin登录交互
         self.zhipin = None
         # 当前登录用户
@@ -142,6 +154,27 @@ class ZhipinClient():
             for msg in msgs:
                 self.parserMessage(msg)
 
+    def switchRobot(self, bossId, bossName, isOpen=None):
+        self.openChatBossStore[bossId] = not self.openChatBossStore.get(bossId) if isOpen is None else isOpen
+        isOpen = self.openChatBossStore[bossId]
+        self.logger.warning('%s: %s智能聊天' % (bossName, '开启' if isOpen else '关闭'))
+        return defaultTip['openRobot' if isOpen else 'closeRobot']
+
+    def askRobot(self, text, bossId, bossName):
+        # 机器人查询: 小i -> 茉莉 -> 青云客
+        result = self.xiaoi.askText(text) or self.moli.askText(text, bossId, bossName) or self.qingyunke(text)
+        if not result: result = defaultTip['robotNotReturn']
+        return result
+
+    def systemMessage(self, text, bossName):
+        if text == '100':
+            # 开启或关闭智能聊天
+            return self.switchRobot(bossId, bossName)
+        if text == '101':
+            # 重新发送向导
+            return defaultTip['firstTip'] % (bossName, self.selfMessageObj['tip'])
+        return ''
+
     def parserMessage(self, msg):
         # 解析并回复消息
         target = msg.get('to')
@@ -154,42 +187,41 @@ class ZhipinClient():
             self.logger.warning('消息为自己发送，跳出')
             return
         type = '%d-%d' % (msgType, bodyType)
-        ans = ''
+        ans = []
         bossId = origin.get('uid')
         bossName = origin.get('name')
         canChat = self.openChatBossStore.get(bossId)
         if type in ['1-1', '3-1']:
             # 为用户发送数据
             text = body.get('text').strip()
-            if self.selfMessageObj.get(text) or text in ['openChat']:
+            if text in ['100', '101']:
+                # 系统指令
+                ans.append(self.systemMessage(text, bossName))
+            elif self.selfMessageObj.get(text):
+                # 配置指令
                 while self.selfMessageObj.get(text) is not None:
                     text = self.selfMessageObj.get(text)
-                ans = text
+                ans.append(text)
             elif canChat and self.robot:
-                ans = self.robot.askText(text)
-                if ans in ['', 'defaultReply']:
-                    ans = '机器人没有看懂你在说什么'
+                # 聊天机器人回复
+                ans.append(self.askRobot(text, bossId, bossName))
         elif type == '3-8':
             # 系统打招呼
             bossUid = int(origin.get('uid'))
             if bossUid not in self.isSendTip:
-                ans = self.selfMessageObj['tip']
+                ans.append(defaultTip['firstTip'] % (bossName, self.selfMessageObj['tip']))
                 self.isSendTip.append(bossUid)
+                ans.append(self.switchRobot(bossId, bossName, True))
         elif type == '1-7' and canChat:
-            ans = '这得主人自己决策，稍等哈'
+            ans.append(defaultTip['applicationResume'])
         elif type == '1-20' and canChat:
-            ans = '机器人暂时只看得懂文字哦'
-        if ans == 'openChat':
-            # 开启智能聊天
-            self.openChatBossStore[bossId] = not self.openChatBossStore.get(bossId)
-            isOpen = self.openChatBossStore[bossId]
-            self.logger.warning('%s: %s智能聊天' % (bossName, '开启' if isOpen else '关闭'))
-            ans = '已开启智能聊天，智能聊天服务由小i机器人提供，可回复讲笑话、上海天气开启智慧生活' if isOpen else '已关闭智能聊天'
-        if ans:
+            ans.append(defaultTip['notText'])
+        if len(ans) > 0:
             self.sendMessageRead(msg)
             self.sendMessageIq(msg)
-            self.logger.debug('自动回复消息: %s' % ans)
-            self.sendMessage(ans, target, origin)
+        for text in ans:
+            self.logger.debug('自动回复消息: %s' % text)
+            self.sendMessage(text, target, origin)
 
     def sendMessageRead(self, msg):
         # 消息已读
@@ -264,10 +296,19 @@ class ZhipinClient():
 
     def robotInit(self):
         # 初始化机器人
-        robot = Xiaoi()
-        robot.open()
-        robot.heartbeat()
-        self.robot = robot
+        xiaoi = Xiaoi()
+        xiaoi.open()
+        xiaoi.heartbeat()
+        self.xiaoi = xiaoi
+        pwd = os.path.dirname(os.path.abspath(__file__))
+        (getenv, setenv, getfile) = enver(os.path.join(pwd, '.env'))
+        key = getenv('MOLI_KEY')
+        secret = getenv('MOLI_SECRET')
+        if key and secret:
+            self.moli = Moli(key, secret)
+        self.qingyunke = Qingyunke()
+        self.robot = True
+
 
     def muttInit(self):
         # 初始化聊天服务

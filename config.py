@@ -1,8 +1,10 @@
 # coding: utf-8
-wt = 'https://www.zhipin.com/wapi/zppassport/get/wt'
+baseUrl = 'https://www.zhipin.com/wapi'
 
-getGeekFriendListUrl = 'https://www.zhipin.com/wapi/zprelation/friend/getGeekFriendList.json?page=1'
+wt = baseUrl + '/zppassport/get/wt'
 
-bossdataUrl = 'https://www.zhipin.com/wapi/zpgeek/chat/bossdata.json?bossId=%d&bossSource=%d'
+getGeekFriendListUrl = baseUrl + '/zprelation/friend/getGeekFriendList.json?page=1'
 
-historyMsgUrl = 'https://www.zhipin.com/wapi/zpchat/geek/historyMsg?bossId=%s&c=%d&page=%d'
+bossdataUrl = baseUrl + '/zpgeek/chat/bossdata.json?bossId=%d&bossSource=%d'
+
+historyMsgUrl = baseUrl + '/zpchat/geek/historyMsg?bossId=%s&c=%d&page=%d'
