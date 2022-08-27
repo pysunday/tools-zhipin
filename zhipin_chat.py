@@ -162,11 +162,11 @@ class ZhipinClient():
 
     def askRobot(self, text, bossId, bossName):
         # 机器人查询: 小i -> 茉莉 -> 青云客
-        result = self.xiaoi.askText(text) or self.moli.askText(text, bossId, bossName) or self.qingyunke(text)
+        result = self.xiaoi.askText(text) or self.moli.askText(text, bossId, bossName) or self.qingyunke.askText(text)
         if not result: result = defaultTip['robotNotReturn']
         return result
 
-    def systemMessage(self, text, bossName):
+    def systemMessage(self, text, bossId, bossName):
         if text == '100':
             # 开启或关闭智能聊天
             return self.switchRobot(bossId, bossName)
@@ -196,7 +196,7 @@ class ZhipinClient():
             text = body.get('text').strip()
             if text in ['100', '101']:
                 # 系统指令
-                ans.append(self.systemMessage(text, bossName))
+                ans.append(self.systemMessage(text, bossId, bossName))
             elif self.selfMessageObj.get(text):
                 # 配置指令
                 while self.selfMessageObj.get(text) is not None:
@@ -300,13 +300,16 @@ class ZhipinClient():
         xiaoi.open()
         xiaoi.heartbeat()
         self.xiaoi = xiaoi
+        self.logger.info('初始化xiaoi机器人')
         pwd = os.path.dirname(os.path.abspath(__file__))
         (getenv, setenv, getfile) = enver(os.path.join(pwd, '.env'))
         key = getenv('MOLI_KEY')
         secret = getenv('MOLI_SECRET')
         if key and secret:
-            self.moli = Moli(key, secret)
+            self.moli = Moli(key=key, secret=secret)
+            self.logger.info('初始化moli机器人')
         self.qingyunke = Qingyunke()
+        self.logger.info('初始化qingyunke机器人')
         self.robot = True
 
 

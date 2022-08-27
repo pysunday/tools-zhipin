@@ -33,6 +33,8 @@ Optional:
 
 ## zhipin_chat命令使用
 
+**如需开启茉莉机器人请先配置.env.example文件中的MOLI_KEY和MOLI_SECRET字段**
+
 ```bash
 usage: zhipin_chat [-v] [-h] [--config FILE] [--message-in [FILE]] [--message-out [FILE]] [--robot] [--playback]
 
