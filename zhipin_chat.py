@@ -190,7 +190,8 @@ class ZhipinClient():
         ans = []
         bossId = origin.get('uid')
         bossName = origin.get('name')
-        canChat = self.openChatBossStore.get(bossId)
+        # 智能聊天默认开启
+        canChat = self.openChatBossStore.get(bossId) if bossId in self.openChatBossStore else True
         if type in ['1-1', '3-1']:
             # 为用户发送数据
             text = body.get('text').strip()
