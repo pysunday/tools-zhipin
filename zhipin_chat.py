@@ -30,7 +30,7 @@ defaultTip = {
         'robotNotReturn': '机器人没有看懂你在说什么',
         'applicationResume': '这得主人自己决策，稍等哈',
         'notText': '机器人暂时只看得懂文字哦',
-        'firstTip': '尊敬的Boss%s您好，您可回复对应数字获取您想要的信息，或者和智能机器人闲聊!\n\n%s'
+        'firstTip': '尊敬的Boss %s 您好!\n感恩遇见，您可回复对应数字自助查询，亦可与智能机器人闲聊~\n\n%s'
         }
 
 class ZhipinClient():
@@ -191,7 +191,7 @@ class ZhipinClient():
         bossId = origin.get('uid')
         bossName = origin.get('name')
         # 智能聊天默认开启
-        canChat = self.openChatBossStore.get(bossId) if bossId in self.openChatBossStore else True
+        canChat = self.openChatBossStore.get(bossId) if bossId in self.openChatBossStore else self.isRobotDefaultOpen
         if type in ['1-1', '3-1']:
             # 为用户发送数据
             text = body.get('text').strip()
@@ -212,7 +212,7 @@ class ZhipinClient():
             if bossUid not in self.isSendTip:
                 ans.append(defaultTip['firstTip'] % (bossName, self.selfMessageObj['tip']))
                 self.isSendTip.append(bossUid)
-                ans.append(self.switchRobot(bossId, bossName, True))
+                if self.isRobotDefaultOpen: ans.append(self.switchRobot(bossId, bossName, True))
         elif type == '1-7' and canChat:
             ans.append(defaultTip['applicationResume'])
         elif type == '1-20' and canChat:

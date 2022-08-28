@@ -96,6 +96,13 @@ ZHIPIN_CHAT_CMDINFO = {
                 'action': 'store_true'
             },
             {
+                'name': ['--robot-open'],
+                'dest': 'isRobotDefaultOpen',
+                'help': '是否默认开启智能回复',
+                'default': False,
+                'action': 'store_true'
+            },
+            {
                 'name': ['--playback'],
                 'dest': 'isPlayback',
                 'help': '是否使用本地消息回放',
